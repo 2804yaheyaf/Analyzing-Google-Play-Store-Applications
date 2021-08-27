@@ -1,0 +1,713 @@
+---
+title: "Review 3 - Analysing Google Play Store applications"
+output:
+  html_document:
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+  pdf_document: default
+---
+### Reg. No: 18BCE1225
+
+### Name: Yaheya Farooqui
+
+
+
+* * *
+
+## What problem are you trying to solve?
+
+#### Through this project, I am trying to visualize and analyze the different kinds of applications availible on play store and understand what actually increases an application's possibility to garner more number of downloads.
+* * *
+
+
+
+* * *
+
+## What data have you chosen?(Chosen Dataset, Source of dataset, Description of dataset, basic commands to describe dataset)
+
+#### The data I have chosen is a dataset of all applications available on the Google Play Store as of January 1st, 2018. The dataset was taken from google's official website, ie, support.google.com
+
+#### The Play Store apps data has enormous potential to drive app-making businesses to success. Actionable insights can be drawn for developers to work on and capture the Android market!
+
+#### It is a web scraped data of over 10,000+ play store apps for analysing the andorid market 
+
+
+#### App - Name of the Application
+#### Category- Category of the App
+#### Rating - App Ratings on Play Store
+#### Reviews - Number of Reviews for the App on Play Store
+#### Size - Size of App in MB
+#### Installs - Number of Downloads
+#### Type - Whether the App is Paid or Free
+#### Price - Price of the App if its Not Free Content.Rating - Age Limitations for the App Genres - Sub-Division of Category Last.Updated - When was the App last 
+#### Updated Current.Ver - Version of the App
+#### Android.Ver - Compatibility with Android Versions
+
+* * *
+
+* * *
+
+## Frame your objectives
+
+#### exploring the dataset to analyze all the different kinds of apps of different genres whether it be free or paid.
+
+### our objectives include 
+#### 1)Highest Rated App Categories
+#### 2)Most Popular App Categories
+#### 3)Games which you should or should not downloaded
+#### 4)Communication and Social Apps which are Highly Rated but not Popular
+#### 5)Which apps are really worth your money. And a few more interesting observations will be made from the data.
+
+
+* * *
+
+## Is there any work previously reported on the problem and the data? If so, discuss it here.
+
+### Yes, there has been similar work done regarding this aspect but not on 2018 dataset
+
+### link for the dataset
+
+#### https://www.datacamp.com/projects/619
+
+#### http://creativecommons.org/licenses/by/3.0/
+
+* * *
+
+
+## setup and library
+
+```{r}
+
+library(rmarkdown)
+library(knitr)
+library(tidyverse)
+library(highcharter) 
+library(lubridate)
+library(stringr)
+library(xts)
+library(dplyr)
+library(visdat)
+
+library(readr)
+library(ggplot2) #plots 
+#install.packages("teachingApps")
+library(ggthemes)
+library(teachingApps)
+library(htmlwidgets)
+```
+
+## initialising the dataset
+```{r}
+
+data<-read.csv("D:\\play store\\googleplaystore.csv")
+data2<-read.csv("D:\\play store\\googleplaystore_user_reviews.csv")
+```
+
+## Basic Commands to describe dataset
+
+```{r}
+glimpse(data)
+str(data)
+dim(data)
+head(data)
+summary(data)
+colnames(data)
+glimpse(data2)
+colnames(data2)
+```
+## first, we take a look at all the missing values of the dataset
+
+```{r}
+vis_miss(data)
+```
+
+```{r}
+summary(data$Rating)
+```
+
+### we see that max rating of apps goes on till 19 while google allows you to rate out of 5. so we need to take care of this before we move further.
+
+```{r}
+data.Rating <- data[which(data$Rating > 5),] <- NA
+summary(data$Rating)
+```
+
+## Data Preprocessing
+
+### upon checking the dataset, we see there are multiple NA or empty values and we need to clean the dataset to do analysis on it. also, there are a lot of factor variables which will be converted into numeric so that analysis on them becomes easier. 
+
+```{r}
+data.clean <- data %>%
+  mutate(
+    # Eliminate some characters to transform Installs to numeric
+    Installs = gsub("\\+", "", as.character(Installs)),
+    Installs = as.numeric(gsub(",", "", Installs)),
+    # Eliminate M to transform Size to numeric
+    Size = gsub("M", "", Size),
+    # Replace cells with k to 0 since it is < 1MB
+    Size = ifelse(grepl("k", Size), 0, as.numeric(Size)),
+    # Transform reviews to numeric
+    Reviews = as.numeric(Reviews),
+    # Remove currency symbol from Price, change it to numeric
+    Price = as.numeric(gsub("\\$", "", as.character(Price))),
+    # Last Updated to date format
+    Last.Updated = mdy(Last.Updated),
+    # Replace "Varies with device" to NA since it is unknown
+    Min.Android.Ver = gsub("Varies with device", NA, Android.Ver),
+    # Keep only version number to 1 decimal
+    Min.Android.Ver = as.numeric(substr(Min.Android.Ver, start = 1, stop = 3)),
+    # Drop old Android version column
+    Android.Ver = NULL
+  ) %>%
+  filter(
+    # Two apps had type as 0 or NA, they will be removed 
+    Type %in% c("Free", "Paid")
+  )
+
+str(data.clean)
+#summary(data.clean$Rating)
+```
+## data with NA values
+
+```{r}
+data.clean %>%
+    summarise_all(
+        funs(sum(is.na(.)))
+    ) %>%
+  gather() %>%
+  # Only show columns with NA
+  filter(value> 1) %>%
+  arrange(-value) %>%
+    hchart('column', hcaes(x = 'key', y = 'value', color = 'key')) %>%
+  hc_add_theme(hc_theme_elementary()) %>%
+  hc_title(text = "Columns with NA values")
+```
+
+
+
+## most popular category by the number of installs
+
+```{r}
+data.clean %>%
+  count(Category, Installs) %>%
+  group_by(Category) %>%
+  summarize(TotalInstalls = sum(as.numeric(Installs))
+  )%>%
+  arrange(-TotalInstalls) %>%
+  hchart('scatter', hcaes(x = "Category", y = "TotalInstalls", size = "TotalInstalls", color = "Category")) %>%
+  hc_add_theme(hc_theme_ft()) %>%
+  hc_title(text = "Most popular categories (Number of installs)")
+```
+
+
+#### we see that community, game and family genre have the most number of installs
+
+
+
+
+## now we focus on application size in terms of MB
+
+```{r}
+data.clean %>%
+  count(Size) %>%
+  hchart('scatter', hcaes(x = "Size", y = "n")) %>%
+  hc_colors("#5DE336") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_title(text = "Distribution of application size (in MB)")
+```
+
+
+#### There are a lot of apps under 10MB, in general applications are between 5 MB to 20 MB.
+
+## free vs paid app
+
+```{r}
+ggplot(data,aes(x=Type,fill=Type)) +
+  geom_bar()+
+  ggtitle("Count of Each Type of App")+
+  xlab("Type of App")+
+  ylab("Count")
+```
+
+
+## lets take a look at the distribution of free and paid applications
+
+
+```{r}
+tmp <- data.clean %>%
+  count(Type) %>%
+  mutate(perc = round((n /sum(n))*100)) %>%
+  arrange(desc(perc))
+
+hciconarray(tmp$Type, tmp$perc, size = 5) %>%
+  hc_title(text="Percentage of paid vs free apps")
+```
+
+
+## Distribution of free vs paid apps by category
+
+```{r}
+data.clean %>% 
+  group_by(Category, Type) %>%
+  summarize(
+    n = n()
+  ) %>%
+  mutate(perc = round((n /sum(n))*100)) %>%
+  hchart('bar', hcaes(x = 'Category', y = 'perc', group = 'Type')) %>%
+  hc_plotOptions(series=list(stacking='normal')) %>%
+  hc_title(text="Percentage of Free vs Paid by Category") %>%
+  hc_add_theme(hc_theme_flat())
+```
+
+
+
+## Analyzing all apps with respect to their pricing per category. the distribtuion is done by comparing it to median as mean could skew the values a lot
+
+
+```{r}
+data.clean %>%
+  filter(Type == "Paid") %>%
+  group_by(Category) %>%
+  summarize(
+    Price = mean(Price)
+  ) %>%
+  arrange(-Price) %>%
+  hchart('treemap', hcaes(x = 'Category', value = 'Price', color = 'Price')) %>%
+  hc_add_theme(hc_theme_elementary()) %>%
+  hc_title(text="Mean Price Distrubtion per category")
+```
+
+
+
+```{r}
+data.clean %>%
+  filter(Type == "Paid") %>%
+  group_by(Category) %>%
+  summarize(
+    Price = median(Price)
+  ) %>%
+  arrange(-Price) %>%
+  hchart('treemap', hcaes(x = 'Category', value = 'Price', color = 'Price')) %>%
+  hc_add_theme(hc_theme_elementary()) %>%
+  hc_title(text=" Median Price Distrubtion per category")
+```
+
+
+## analysing apps based on when they were updated by year
+
+
+```{r}
+## Split the date into day, month and year.
+## With that we could have a good visalization of last updated column
+dates <- str_split(str_remove_all(data$Last.Updated, ",")," ")
+months <- sapply(dates, function(t){return (paste(t[1],t[3],sep = " "))})
+days <- sapply(dates, function(t){return (t[2])})
+years <- sapply(dates, function(t){return (t[3])})
+last_update <- data.frame(months = months, years = years)
+## BarPlot for year of Last.Updated 
+ggplot(last_update, aes(x = years, fill = years)) +
+  geom_bar() +
+  geom_text(stat='count', aes(label=..count..), vjust=-1) +
+  guides(fill = FALSE) +
+  xlab("Year") +
+  labs(title = "Number of apps by year of last update")+coord_flip()
+```
+
+
+
+## analyzing apps based on when they were last updated by exact date
+
+```{r}
+# Get number of apps by last updated date
+tmp <- data.clean %>% count(Last.Updated)
+
+# Transform data into time series
+time_series <- xts(
+  tmp$n, order.by = tmp$Last.Updated 
+)
+
+highchart(type = "stock") %>% 
+  hc_title(text = "Last updated date") %>% 
+  hc_subtitle(text = "Number of applications by date of last update") %>% 
+  hc_add_series(time_series) %>%
+  hc_add_theme(hc_theme_gridlight())
+```
+
+
+
+
+## based on their android version
+
+
+```{r}
+## BarPlot
+ggplot(data, aes(x = Android.Ver, fill = Android.Ver)) +
+  geom_bar() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  geom_text(stat='count', aes(label=..count..), vjust=0.5, hjust = -0.1, size=3)+
+  coord_flip() + labs(title="Number of apps by supported Android Version") + guides(fill = FALSE) +
+  ylab("Android Version")
+```
+
+
+
+```{r}
+## content rating column
+googleplaystore<-read.csv("D:\\play store\\googleplaystore.csv")
+## Bar_Plot
+ggplot(googleplaystore, aes(x = Content.Rating, fill = Content.Rating)) +
+  geom_bar() +
+  geom_text(stat='count', aes(label=..count..), vjust=-1) +
+  guides(fill = FALSE) +
+  labs(title = "Number of apps by content rating") +
+  xlab("Content Rating")+coord_flip()
+```
+
+
+
+## number of installs per category
+
+
+
+```{r}
+n_installs<-data.clean%>%group_by(Category)%>%summarise(installs=sum(Installs,na.rm = TRUE))%>%ungroup()
+p<-ggplot(n_installs,aes(x=reorder(Category,installs),y=installs,fill=Category))+geom_bar(stat = "identity",width =0.5)+coord_flip()+labs(x="No of installs in each Category",y="Category",title="No of installs for each category")
+p+theme(legend.position = "None")
+```
+
+
+
+#### here we see that games are the most installed apps on playstore
+
+
+```{r}
+#Best Paid Games
+p_games <- data.clean%>%filter(Category=="GAME"  & Type=="Paid" & Rating>=4.0 &Installs>10000) %>% select(App,Price,Rating)%>%arrange(desc(Rating),Price)
+p<-ggplot(p_games[1:5,],aes(x=App,y=Price,fill=Rating))+geom_bar(stat="identity",width = 0.5)
+p+labs(title="Best Paid Games")+theme(axis.text.x = element_text(angle = 45,hjust = 0.9))
+```
+
+
+
+## no of apps by genre in game category
+
+```{r}
+## Bar_Plot For GAME Category
+ggplot(googleplaystore[googleplaystore$Category %in% c('GAME'),], aes(x = Genres, fill = Genres)) +
+  geom_bar() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  +
+  labs(title = "Number of apps by genre in category GAME") +
+  guides(fill = FALSE)
+```
+
+
+
+## checking which category has the most positive reviews
+
+
+```{r}
+xx<-data.clean%>%group_by(Category)%>%summarise(means=mean(Rating,na.rm = TRUE))%>%ungroup()
+p<-ggplot(xx,aes(x=reorder(Category,means),y=means,fill=Category))+geom_bar(stat = "identity",width =0.5)+coord_flip()+labs(title="Highest Rated App Categories",x="Categories",y="Mean of Ratings by Category")
+p+theme(legend.position = "None")
+
+```
+
+
+## total reviews per app category
+
+
+```{r}
+ggplot(data.clean,aes(x=Category,y=Reviews)) +
+  geom_bar(stat = "identity",width = 0.7,fill="blue")+
+  coord_flip()+
+  ggtitle("Total Reviews Of Each App Category")+
+  xlab("Category Name")+
+  ylab("Total Number of Reviews")
+```
+
+
+## category vs reviews
+
+```{r}
+data.clean %>% 
+filter(Category==c("FAMILY","GAME","TOOLS","MEDICAL","BUSINESS","PRODUCTIVITY","PERSONALIZATION","COMMUNICATION","SPORTS","LIFESTYLE"))%>% 
+ggplot(aes(Category,as.numeric(Reviews)))+geom_jitter(aes(color=Category))+geom_boxplot(aes(fill=Category),alpha=1/2)+
+theme(axis.text.x = element_text(angle = 15,hjust = 0.5, size =6))+
+theme(legend.position="none")+xlab("")+ylab("Reviews")+
+scale_x_discrete(labels = function(x) str_wrap(x, width = 2))
+```
+
+
+
+## ratings 
+
+```{r}
+dataset<-read.csv("D:\\play store\\googleplaystore.csv")
+dataset$Installs <- str_replace_all(dataset$Installs,",","")
+dataset$Installs <- as.numeric(dataset$Installs)
+dataset$Reviews <- as.numeric(dataset$Reviews)
+  
+#Cleaning 2
+##Converting "M" and "K" and changing it to numeric format
+dataset$Size <- str_replace_all(dataset$Size,"M","")
+dataset$Size <- str_replace_all(dataset$Size,"k","")
+dataset$Size <- as.numeric(dataset$Size)
+dataset[is.na(dataset$Size),"Size"] <- median(dataset$Size,na.rm=T)
+
+#Converting "$"
+#The Price column has "$" in it.Since this is a special character "[]" has to be mentioned for it.
+dataset$Price <- str_replace_all(dataset$Price,"[$]","")
+    
+#Cleaning 3
+#We can use nested ifelse to convert into category.
+Install_Category<-ifelse(dataset$Installs <10001,"Grade D",ifelse(dataset$Installs <1000001,"Grade C",ifelse(dataset$Installs <100000001,"Grade B","Grade A")))
+Install_Category <- factor(Install_Category,levels = c("Grade D","Grade C","Grade B","Grade A"))
+dataset<- cbind(dataset,as.data.frame(Install_Category))
+  
+#Cleaning 4
+#The mdy specifies the Month Day Year.
+dataset$Last.Updated<-mdy(dataset$Last.Updated)
+dataset$Year.Updated<-year(dataset$Last.Updated)
+dataset$Month.Updated<-month(dataset$Last.Updated)
+#Now we dont need the Last.Updated Field hence Removing it
+dataset$Last.Updated<- NULL
+
+```
+
+
+
+## density of app ratings
+
+
+```{r}
+ggplot(data=subset(data.clean,!is.na(Rating)), aes(x = Rating,na.rm=TRUE)) +
+	geom_histogram(aes(y = ..density..), binwidth = 0.2, fill = 'grey90', color = 'grey80') +
+	geom_vline(aes(xintercept = mean(Rating)), color = 'red', linetype = "dashed") +
+	labs(x = 'Rating', y = 'Density', title='Density of App Ratings') +
+	theme_hc()
+```
+
+
+#### Looking at the density histogram above, we can see that the majority of ratings fall between roughly 3.8 and 4.6.
+
+
+## Mean Ratings of Applications
+
+```{r}
+mean(data$Rating,na.rm=TRUE)
+```
+#### on average, we see that the mean of app rating is 4.191
+
+
+```{r}
+library(scales)
+library(ggplot2)
+#scales library for log values to be displayed as natural numbers
+ggplot(data.clean, aes(x=Reviews, y=Rating)) +scale_x_continuous(trans='log10') +
+  geom_point(aes(col=Type)) +
+  labs(title="Android App Ratings vs Number of Reviews", subtitle="Google Playstore Dataset", y="Rating from 1 to 5 stars", x="Number of Reviews") +
+  theme_linedraw()
+```
+
+
+
+## correlation model
+
+```{r}
+library(corrplot)
+str(data.clean)
+data_num <- data.clean[,c("Rating", "Reviews", "Size","Installs","Price","Min.Android.Ver")]
+corr <- cor(data_num,use="pairwise.complete.obs")
+corrplot(corr, method='number',type="upper")
+```
+
+
+### we see that there is a positive correlation of 0.64 between number of installs and review rating and we confirm our assumption that no of installs do increase our chance for a good rating.
+
+
+## Analyzing how size of the app matters for it to have a higher rating
+
+```{r}
+tmp <- data.clean %>%
+    group_by(Rating) %>%
+    summarise(avg_size = mean(Size,  na.rm=TRUE)) %>%
+    arrange(desc(avg_size))
+            
+ggplot(tmp, aes(x=Rating, y = avg_size, fill = -avg_size))+
+    geom_col()
+```
+
+#### we cannot deduce much from this graph as we see that apps rating is all over the place irrespective of size. hence, we can conclude that the "quality" of the app matters and not its size.
+
+
+## Analyzing how price of the app matters for it to have a higher rating
+
+```{r}
+ggplot(data.clean, aes(x = Rating, fill = Type))+
+    geom_bar(stat = "Count", position = "dodge")+
+    xlab("Rating")+
+    ylab("Count")+ 
+    labs(title = "Rating and Price")+
+    coord_flip()
+```
+
+#### we see that for paid apps, its quite rare for them to have less rating. Hence, we can understand that users paying for these apps do their research beforehand before making their purchases and then give reviews. for free apps, we see that most apps have a rating from 3.8 to 4.6 which we have deduced earlier but this comparison gives us a good insight between the free and paid apps.
+
+
+## content rating table
+
+```{r}
+table(data.clean$Content.Rating)
+ggplot(data[which(data.clean$Content.Rating!="Everyone"&data$Content.Rating!="Teen"),], aes(x=Category, y=Rating))+geom_point(aes(colour=factor(Content.Rating)))+coord_flip()
+
+```
+
+
+## Boxplot between rating and app categories
+
+```{r}
+ggplot(data.clean, aes(x = Category, y = Rating)) +
+  geom_boxplot() +
+  stat_boxplot(geom = "errorbar") +
+  stat_summary(fun.y = mean, col = "black", geom = "point", size = 3) +
+  ggtitle("Side by Side Boxplots of Rating Between Categories")+coord_flip()
+```
+
+
+
+## Do App Ratings Differ Per Genre?
+
+#### H0 : The genre of an app does not have any significant impact on its rating.
+
+####HA : App ratings differ based on their genre. 
+
+####To test this hypothesis, we can begin by observing the distribution of Rating over Genre using a boxplot. Due to the number of genres, the plot is a little messy, so I've used colors, alpha, and jittering to make it a little better.
+
+```{r}
+ggplot(data, aes(x = Genres, y = Rating, color = Genres)) +
+	geom_jitter(alpha = 0.3, width = 0.1) +
+	geom_boxplot(outlier.color = NA) +
+	geom_hline(aes(yintercept = mean(Rating)), color = 'black', linetype = 'dashed') +
+	coord_flip() +
+	labs(x = '', y = 'Rating', title = 'Ratings per Genre') +
+	theme_hc() +
+	theme(legend.position = 'none')
+
+```
+
+
+#### We can see from this visual plot that the means differ, but is it significant? Of note is the great number of outliers. I think that given the domain we're working in here - app ratings on popular mobile platform - deviation like this is expected. Let's now run an ANOVA test to see if there's any statistically significant difference. I am not concerned with which differs, only that there is a difference.
+
+```{r}
+rating_genre_aov <- aov(Rating ~ Genres, data = data.clean)
+summary(rating_genre_aov)
+```
+
+#### Here, our p-value is very small, so we can reject  H0  and conclude that the genre has a statistically significant impact, but is unlikely to be the sole influence upon, the rating of an application. We must be careful here to say that there is an impact, but keep in mind that many other factors could lead to a rise in rating, not just the genre.
+
+## App Rating vs Size
+
+```{r}
+ggplot(data=subset(data.clean,!is.na(Rating)), aes(x = Size, y = Rating)) +
+	stat_binhex(show.legend = F) +
+	scale_x_continuous(breaks = seq(0, 100, length=9)) +
+	geom_vline(xintercept = median(data.clean$Size, na.rm=TRUE), color = 'red', linetype = 'dashed') +
+	theme_hc() +
+	scale_fill_gradient(low = 'white', high = 'black') +
+	labs(title = 'App Rating vs. App Size', x = 'Size (MB)')
+
+```
+
+
+#### From this hex plot, we can see that there is a high density of entries around 3-4MB which correlate with just under 4 rating, moving up to near 5. Of interest is the decrease in density as the size increases. This relationship suggests that smaller applications are rated higher. Obviously, as before, there are numerous factors that come into this other than size, but this link is still interesting. The red vertical line is the median app size, which shows us that a tight distribution is on the left of the median, but that it's pushed to the right by the number of larger apps that receive ratings.
+
+## App rating vs Review Count
+
+```{r}
+ggplot(data.clean, aes(x = Rating, y = Reviews, size = Installs)) +
+    geom_jitter(alpha = 0.15) +
+    scale_y_log10(labels = scales::comma) +
+    scale_size_continuous(labels = scales::comma) +
+     geom_vline(xintercept = mean(data.clean$Rating,na.rm=TRUE), color = 'red', linetype = 'dashed') +
+     geom_hline(yintercept = mean(data.clean$Reviews,na.rm=TRUE), color = 'red', linetype= 'dashed') +
+    theme_hc() +
+    labs(title = 'App Rating vs. Review Count')
+
+```
+
+#### The plot above explores Rating on Reviews. Scales in the Y axis have been logged due to the outliers that have an extortionate number of reviews, yet are perfectly valid in our data set (i.e., apps that have gone viral).
+
+#### The size of the points is linked to the number of installs that app has. If we look in the top-right, we can see the majority of large points. This makes sense, as higher install count is likely to generate a higher review count, and given that the applications are obviously popular, they are also likely to have a decent rating, which most of them do.
+
+#### The dense area of the plot lies between ~3.8 and ~4.75 on the Rating axis, which matches our previous estimate of the average rating. If we read the graph from the bottom up at this location, we can see the density increase gradually as apps approach 100k reviews. This again suggests that applications with a large user base (and therefore large number of reviews) increses the chances of having a good rating, although this is not given. This is of course a very high-level overview and more rigerous analysis would have to be done to determine if such correlations have any true meaning. 
+
+
+## App rating vs Length of app name
+
+```{r}
+data.clean %>%
+    mutate(NameLength = nchar(App)) %>%
+    select(NameLength, Rating) %>%
+ggplot(aes(x = cut(NameLength, breaks=c(0, 10, 20, 30, 40, 50, 70, 100, max(NameLength))), y = Rating)) +
+    geom_jitter(alpha = 0.1) + theme_hc() +
+    labs(x = 'Length of App Name', title='App Ratings vs. Length of Name')
+```
+
+#### This graph is a little silly, but nonetheless does provide some insight. We can see that, in accordance with our other findings, the hotspots are around high 3 to mid 4. However, there is a clear density with app names ranging from 10-30 characters in length. This suggests a relationship other than rating; perhaps that applications with short and overly-long names are not installed as much, and therefore do not receive as many (or as high) ratings. We can further explore this by repeating the above graph with respect to install count.
+
+## App Installs vs Length of Name
+
+```{r}
+data.clean %>%
+    mutate(NameLength = nchar(App)) %>%
+    select(NameLength, Installs) %>%
+ggplot(aes(x = cut(NameLength, breaks=c(0, 10, 20, 30, 40, 50, 70, 100, max(NameLength))), y = Installs)) +
+    geom_col() +
+    scale_y_continuous(labels = scales::comma) +
+    theme_hc() +
+    labs(x = 'Length of App Name', title='App Installs vs. Length of Name')
+```
+
+
+#### The majority of the installs are for apps with names between ~10 and ~20 characters. This matches fairly well with our above observation.
+
+#### Therefore, we can conclude that apps with a name of length ~10 to ~30 characters will generally have more installs and will receive on average better ratings.
+
+## Do App ratings differ with price
+
+#### And finally, do app ratings differ with price boundaries? Note that one app, Vargo Anesthesia Mega App, is priced at 79.99. I'm removing this as an outlier to simlpify the graph. The closest price to it is ~40. 
+
+```{r}
+data.clean %>%
+    filter(Type == 'Paid', Price < 60) %>%
+ggplot(aes(x = Rating, y = Price)) +
+    geom_jitter(height=0.5, width=0.5, alpha = 0.3) +
+    theme_hc() +
+    labs(title='App Rating vs. Price (Paid)')
+```
+
+
+#### Eyeballing the scatter plot above, we can see that there is a dense cluster around the 4-5 rating with applications that are < 10 dollars in price. There are also a small number of entries in the same price range with low ratings. This suggests that overall people are happy with their products that cost < 10. This kind of claim would require further investigation to be solidified. it's a shame that the higher paid apps do not have as much density, as it would be interesting to observe whether satisfaction (i.e. high rating) increases (or decreases) as the price of the app goes up.
+
+
+## Conclusion
+
+
+####  as higher install count is likely to generate a higher review count, and given that the applications are obviously popular, they are also likely to have a decent rating, which most of them do.
+
+#### we see that Games category has the most installs on the play store but it does not necessarily have the most positive reviews which tells us that Games development is an ever evolving field as people tend try out new games every now and then, get bored easily and switch to other games
+
+####  we can conclude that apps with a name of length ~10 to ~30 characters will generally have more installs and will receive on average better ratings.
+
+#### we see that there are not much paid apps who have low ratings. from this, we can infer that people willing to spend their money on apps do their thorough research on the internet before buying the application and are generally satisfied with their purchase and that is why they give it a high rating.
+
+
+#### we conclude that people prefer apps which consume less storage space as we see higher number of installs and high rating on apps who are less than 10 MB. but its not a hard restriction, as we see that larger apps do well on the play store too. therefore, in the end its the quality of the app which matters and not its size.
+
+#### Genre has no role whatsoever to play in apps to get a high rating and more installs.
+
+
+## Future Works
+
+#### We can assess all the observation and analysis made, combine more datasets into the test dataset and train a model which will help us to predict whether an application will be feasible on the play store or not depending on its attributes.
